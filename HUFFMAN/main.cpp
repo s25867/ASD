@@ -7,7 +7,7 @@
 #include <fstream>
 
 using namespace std;
-
+//struktura wezla
 struct Node{
     Node *left;
     Node *right;
@@ -23,123 +23,122 @@ struct Node{
         delete right;
         delete left;
     }
-    bool isLeaf(){
+    bool isLeaf(){ //sprawdza, czy liść zawieraja jakiś znak
         return character != '\0';
     }
 };
 
+//zliczanie
+Node* createHuffmanTree(unordered_map<char, int>& value) {
 
-struct comparator{
-    bool operator() (Node *a, Node *b){
-        if(a->value != b->value)
-            return a->value > b->value;
-        if(!a->isLeaf() && b->isLeaf())
-            return false;
-        if(!b->isLeaf() && a->isLeaf())
-            return true;
-        if(a->isLeaf() && b->isLeaf())
-            return a->character > b->character;
-        return true;
+    vector<Node *> nodes;
+
+    for (auto &[character, f]: value) {
+        nodes.push_back(new Node(character, f));
     }
-};
 
-Node * createHuffmanTree(string line){
-    map<char, int> counter;
-    for(char c : line){
-        if(counter.find(c) == counter.end()){
-            counter[c] = 1;
+    while (nodes.size() > 1) {
+        int min1 = 0, min2 = 1; //szukamy 2 najmniejszych elementow
+        if (nodes[min1]->value > nodes[min2]->value) {
+            swap(min1, min2);
         }
-        else{
-            counter[c]++;
+        for (int i = 2; i < nodes.size(); i++) {
+            if (nodes[i]->value < nodes[min1]->value) {
+                min2 = min1;
+                min1 = i;
+            } else if (nodes[i]->value < nodes[min2]->value) {
+                min2 = i;
+            }
         }
+
+        //łączymy je w jeden
+        Node *node = new Node('\0', nodes[min1]->value + nodes[min2]->value);
+        node->left = nodes[min1];
+        node->right = nodes[min2];
+        nodes[min1] = node;
+        nodes.erase(nodes.begin() + min2);
     }
 
-    priority_queue<Node*, vector<Node*>, comparator> nodes;
-
-
-    for(auto entry : counter){
-        nodes.push(new Node(entry.first, entry.second));
-    }
-    Node *root;
-    while(nodes.size() > 1){
-        Node *n1 = nodes.top();
-        nodes.pop();
-        Node *n2 = nodes.top();
-        nodes.pop();
-        if(n1->value == n2->value && !n1->isLeaf()){
-            Node *pom = n1;
-            n1 = n2;
-            n2 = pom;
-        }
-        root = new Node('\0', n1->value + n2->value, n1, n2);
-        nodes.push(root);
-    }
-    return root;
+    return nodes[0];
 }
 
-void encodeNodes(Node *node, string val, map<char, string> *map) {
-    if(node == nullptr){
-        return;
+void generateHuffmanCodes(Node* root, string code, unordered_map<char, string>& codes) {
+    if (!root) return;
+    if (root->character != '\0') {
+        codes[root->character] = code;
     }
-    if(node->isLeaf()){
-        map->insert({node->character, val});
-    }
-    encodeNodes(node->left, val + '0', map);
-    encodeNodes(node->right, val + '1', map);
+    generateHuffmanCodes(root->left, code + '0', codes);
+    generateHuffmanCodes(root->right, code + '1', codes);
 }
 
-string decode(Node *root, string encoded){
+string decode(Node* root, string code) {
     string decoded = "";
-    Node *currentNode = root;
-    for(char c : encoded){
-        if(c == '0'){
-            if(currentNode->left->isLeaf()){
-                decoded += currentNode->left->character;
+    Node *currentNode = root; //zaczynamy na korzeniu
+    for (char c: code) {
+        if (c == '0') {
+            if (currentNode->left->isLeaf()) {
+                decoded += currentNode->left->character; //jesli lisc -> zapisujemy i wracamy
                 currentNode = root;
+            } else {
+                currentNode = currentNode->left; //jesli kontener -> ustawiamy na niego wskaznik
             }
-            else{
-                currentNode = currentNode->left;
-            }
-        }
-        else{
-            if(currentNode->right->isLeaf()){
-                decoded += currentNode->right->character;
+        } else {
+            if (currentNode->right->isLeaf()) {
+                decoded += currentNode->right->character; //jesli lisc -> zapisujemy i wracamy
                 currentNode = root;
-            }
-            else{
-                currentNode = currentNode->right;
+            } else {
+                currentNode = currentNode->right; //jesli kontener -> ustawiamy na niego wskaznik
             }
 
         }
     }
     return decoded;
-
 }
 
 
-int main(){
-    string line;
-    ifstream inputfile("input.txt");
-    getline (inputfile, line);
-    inputfile.close();
-
-    Node *root = createHuffmanTree(line);
-
-    map<char, string> encodedValues;
-    encodeNodes(root, "", &encodedValues);
-
-    string encodedLine;
-    for(char c : line){
-        encodedLine  += encodedValues[c];
+int main() {
+    ifstream input("input.txt");
+    if (!input) {
+        cerr << "Error: Unable to open input file." << endl;
+        return 1;
     }
-    ofstream encoded("encoded.bin");
-    encoded << encodedLine;
-    encoded.close();
 
+    //tworzymy mape wartosci liczb
+    unordered_map<char, int> value;
+    char character;
+    while (input.get(character)) {
+        ++value[character];
+    }
+
+    //budowa drzewa
+    Node* root = createHuffmanTree(value);
+
+    //tworzenie mapy przechowujacej wartosci kazdej z liter
+    unordered_map<char, string> codes;
+    string code;
+    generateHuffmanCodes(root, code, codes);
+    ofstream output("output.bin");
+    if (!output) {
+        cerr << "Error: Unable to open output file." << endl;
+        return 1;
+    }
+
+
+    //powrot do poczatku pliku input
+    input.clear();
+    input.seekg(0, ios::beg);
+    string encoded;
+    //tworzenie kodu huffmana
+    while (input.get(character)) {
+        encoded += codes[character];
+    }
+    output << encoded; //zapis do pliku output
     ofstream decoded("decoded.txt");
-    decoded << decode(root, encodedLine);
+    decoded << decode(root, encoded); //zapis zdekodowanego wyniku
     decoded.close();
 
-    delete root;
+    input.close();
+    output.close();
     return 0;
 }
+
